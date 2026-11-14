@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة المصروف العائلي | إصدار الفواتير المتقدم</title>
+    <!-- مكتبة Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        /* ================= 1. المتغيرات والأساسيات ================= */
+        :root {
+            --bg-main: #f0f2f5; --bg-card: #ffffff; --text-main: #1d1f23; --text-muted: #65676b;
+            --primary: #0064e0; --primary-hover: #004fc6; --secondary: #e4e6eb; --success: #31a24c;
+            --danger: #e41e3f; --warning: #f1a817; --border: #ced0d4;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1); --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --radius-md: 12px; --radius-lg: 20px; --transition: all 0.3s ease;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-main); display: flex; justify-content: center; overflow: hidden; height: 100vh; margin: 0; }
+        .app-container { width: 100%; max-width: 480px; height: 100%; position: relative; background: var(--bg-main); box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
+
+        .screen { display: none; padding: 20px; flex-grow: 1; overflow-y: auto; padding-bottom: 100px; animation: slideUp 0.4s ease-out forwards; opacity: 0; }
+        .screen.active { display: block; opacity: 1; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .flex-center-wrapper { display: flex; flex-direction: column; justify-content: center; min-height: 100%; padding-bottom: 20px; }
+
+        /* ================= 2. مكونات الواجهة ================= */
+        .card { background: var(--bg-card); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+        .header-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; }
+        
+        .header-actions { display: flex; gap: 15px; align-items: center; flex-direction: row; }
+        .bell-icon { position: relative; cursor: pointer; font-size: 1.5rem; }
+        .notif-badge { position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 0.65rem; font-weight: bold; padding: 2px 5px; border-radius: 10px; display: none; }
+        
+        .btn { width: 100%; padding: 14px; border: none; border-radius: var(--radius-md); font-size: 1rem; font-weight: 600; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-outline { background: transparent; border: 2px solid var(--border); color: var(--text-main); }
+        .btn-text { background: none; border: none; color: var(--primary); font-weight: 600; cursor: pointer; padding: 5px; }
+        .btn-danger { background: var(--danger); color: white; }
+        
+        .form-group { margin-bottom: 16px; text-align: right; }
+        .form-label { display: block; margin-bottom: 6px; font-size: 0.9rem; font-weight: 600; color: var(--text-muted); }
+        .form-control { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 1rem; background: var(--bg-main); }
+        .checkbox-label { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-main); border-radius: 8px; margin-bottom: 8px; cursor: pointer; border: 1px solid transparent; transition: 0.2s; }
+        
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; margin: 0 auto; width: 100%; max-width: 480px; background: var(--bg-card); display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid var(--border); z-index: 500; box-shadow: 0 -4px 12px rgba(0,0,0,0.05); }
+        .nav-item { background: none; border: none; display: flex; flex-direction: column; align-items: center; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; font-weight: 600; gap: 4px; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 1.4rem; }
+
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); transition: 0.2s; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        .badge-success { background: #d3f9d8; color: #2b8a3e; }
+        .badge-danger { background: #ffe3e3; color: #c92a2a; }
+        .badge-pending { background: #fef0cd; color: #855a00; }
+
+        .progress-circle { position: relative; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .progress-inner { position: absolute; inset: 15px; background: var(--bg-card); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .category-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;}
+        .cat-card { background: var(--bg-main); border-radius: var(--radius-md); padding: 10px 5px; text-align: center; cursor: pointer; position: relative; }
+        .cat-settings-btn { position: absolute; top: 2px; right: 2px; background: none; border: none; font-size: 1rem; cursor: pointer; color: var(--text-muted); z-index: 10; padding: 5px; }
+
+        .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 500px; font-size: 0.85rem; }
+        .data-table th, .data-table td { padding: 10px; text-align: right; border-bottom: 1px solid var(--border); }
+        .data-table th { background-color: var(--bg-main); font-weight: bold; color: var(--text-muted); }
+        
+        .filters-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; background: var(--bg-main); padding: 10px; border-radius: 8px; }
+        .filter-row { display: flex; gap: 5px; width: 100%; }
+        .filter-input { flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; background: var(--bg-card); }
+
+        .settings-menu-item { display: flex; align-items: center; gap: 15px; padding: 20px; background: var(--bg-main); border-radius: var(--radius-lg); margin-bottom: 15px; cursor: pointer; transition: 0.2s; border: 1px solid transparent; }
+        .settings-menu-item:hover { border-color: var(--primary); background: var(--bg-card); }
+        .settings-icon { font-size: 2.5rem; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; visibility: hidden; }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal-content { background: var(--bg-card); width: 92%; max-width: 500px; border-radius: var(--radius-lg); padding: 24px; transform: translateY(20px); transition: 0.3s; max-height: 85vh; overflow-y: auto; }
+        .modal-overlay.active .modal-content { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+
+        .fab { position: fixed; bottom: 80px; right: 20px; width: 60px; height: 60px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; box-shadow: 0 4px 15px rgba(0,100,224,0.4); border: none; z-index: 500; cursor: pointer; transition: 0.2s; }
+        .fab:active { transform: scale(0.95); }
+        
+        .user-manage-card { background: var(--bg-main); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--border); }
+        .user-manage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .user-manage-details { font-size: 0.85rem; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+
+        .notif-item { padding: 12px; border-bottom: 1px solid var(--border); transition: 0.3s; cursor: pointer; border-radius: 8px; margin-bottom: 5px; }
+        .notif-item.unread { background-color: #e6f2ff; border-right: 4px solid var(--primary); }
+
+        .print-only { display: none; }
+        @media print {
+            body { background: white; margin: 0; padding: 0; overflow: visible; height: auto; }
+            .app-container, .modal-overlay, #toast-container, .fab { display: none !important; }
+            .print-only { display: block !important; width: 100%; padding: 20px; direction: rtl; color: black; font-family: sans-serif; }
+            .print-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+            .print-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            .print-table th, .print-table td { border: 1px solid #ddd; padding: 12px; text-align: right; }
+            .print-table th { background-color: #f2f2f2; font-weight: bold; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toast-container" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 400px; pointer-events: none;"></div>
+    <div id="printArea" class="print-only"></div>
+
+    <div class="app-container">
+        
+        <div id="screen-splash" class="screen active">
+            <div class="flex-center-wrapper">
+                <div style="text-align: center; margin-bottom: 40px;">
+                    <div style="font-size: 4rem; margin-bottom: 10px;">🏠</div><h1 style="color: var(--primary);">مصروفنا</h1>
+                    <p id="dbStatusBadge" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px;">وضع العمل: محلي (Offline)</p>
+                </div>
+                <button class="btn btn-primary" style="margin-bottom: 15px;" onclick="navTo('screen-admin-login')">الدخول كمدير</button>
+                <button class="btn btn-outline" onclick="navTo('screen-user-auth')">الدخول كفرد</button>
+            </div>
+        </div>
+
+        <div id="screen-admin-login" class="screen">
+            <div class="flex-center-wrapper">
+                <h2 class="header-title">دخول الإدارة</h2>
+                <div class="card">
+                    <input type="password" id="adminPass" class="form-control" placeholder="الباسوورد">
+                    <button class="btn btn-primary" style="margin-top: 15px;" onclick="handleAdminLogin()">دخول</button>
+                    <button class="btn-text" style="width: 100%; margin-top: 15px; font-size: 0.85rem;" onclick="openModal('modal-recover-pass')">نسيت كلمة المرور؟</button>
+                </div>
+                <button class="btn-text" style="width: 100%;" onclick="navTo('screen-splash')">رجوع</button>
+            </div>
+        </div>
+
+        <div id="screen-user-auth" class="screen">
+            <div class="flex-center-wrapper">
+                <div id="form-user-login">
+                    <h2 class="header-title">دخول الأفراد</h2>
+                    <div class="card"><input type="email" id="userLoginEmail" class="form-control" value="abd@fam.com" style="margin-bottom: 10px;"><input type="password" id="userLoginPass" class="form-control" value="1234"><button class="btn btn-primary" style="margin-top: 15px;" onclick="handleUserLogin()">دخول</button></div>
+                    <button class="btn-text" style="width: 100%; margin-top: 10px;" onclick="toggleUserForms()">مستخدم جديد؟ إنشاء حساب</button>
+                </div>
+
+                <div id="form-user-register" style="display: none;">
+                    <h2 class="header-title">إنشاء حساب</h2>
+                    <div class="card">
+                        <div class="form-group"><input type="text" id="regName" class="form-control" placeholder="الاسم (ثلاثي)"></div>
+                        <div class="form-group"><input type="email" id="regEmail" class="form-control" placeholder="الإيميل"></div>
+                        <div class="form-group"><input type="password" id="regPass" class="form-control" placeholder="كلمة المرور"></div>
+                        <div class="form-group"><input type="tel" id="regPhone" class="form-control" placeholder="رقم الهاتف"></div>
+                        <div class="form-group"><input type="text" id="regCliq" class="form-control" placeholder="رمز كليك CliQ"></div>
+                        <button class="btn btn-primary" onclick="handleUserRegister()">طلب انضمام</button>
+                    </div>
+                    <button class="btn-text" style="width: 100%; margin-top: 10px;" onclick="toggleUserForms()">لدي حساب</button>
+                </div>
+                <button class="btn-text" style="width: 100%; margin-top: 20px;" onclick="navTo('screen-splash')">رجوع للرئيسية</button>
+            </div>
+        </div>
+
+        <!-- ================= تطبيق الإدارة ================= -->
+        <div id="screen-admin-app" class="screen">
+            <header class="header-title">
+                <span>الإدارة</span>
+                <div class="header-actions">
+                    <button class="btn-text" style="color: var(--danger); padding:0;" onclick="confirmLogout()">خروج</button>
+                    <div class="bell-icon" onclick="openNotifications('admin')">🔔 <span class="notif-badge" id="adminNotifBadge">0</span></div>
+                </div>
+            </header>
+
+            <div id="admin-tab-home" class="admin-tab active">
+                <div class="card" style="text-align: center; cursor: pointer;" onclick="openMainQuickStatus()">
+                    <h3 style="color: var(--text-muted); font-size: 1rem;">الميزانية العامة الحالية</h3>
+                    <div style="display: flex; justify-content: center; margin: 15px 0;">
+                        <div class="progress-circle" id="adminMainCircle" style="width: 160px; height: 160px;">
+                            <div class="progress-inner">
+                                <h2 id="adminRemainingTxt" style="font-size: 2rem; color: var(--success); margin: 0;">0</h2>
+                                <span style="font-size: 0.8rem;">متبقي من <span id="adminTotalTxt">0</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="font-size: 1.1rem;">الأقسام والميزانيات</h3>
+                        <button class="btn-text" style="font-size: 0.85rem; padding: 0;" onclick="openModal('modal-all-categories-view')">عرض الكل</button>
+                    </div>
+                    <div class="category-grid" id="adminCategoriesGridViewOnly"></div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="font-size: 1.1rem;">أحدث العمليات</h3>
+                        <button class="btn-text" style="font-size: 0.85rem; padding: 0;" onclick="switchTab('admin', 'expenses')">عرض الكل</button>
+                    </div>
+                    <div id="adminRecentTxsList"></div>
+                </div>
+            </div>
+
+            <!-- المصروفات المعتمدة -->
+            <div id="admin-tab-expenses" class="admin-tab" style="display: none;">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="font-size: 1.1rem;">المصروفات المعتمدة</h3>
+                        <button class="btn-outline" style="width: auto; padding: 6px 12px; border-radius: 6px;" onclick="printFilteredExpenses()">🖨️ طباعة</button>
+                    </div>
+                    
+                    <div class="filters-container">
+                        <div class="filter-row">
+                            <select id="filterExpName" class="filter-input" onchange="renderExpensesTable()"></select>
+                            <select id="filterExpCat" class="filter-input" onchange="renderExpensesTable()"></select>
+                        </div>
+                        <div class="filter-row">
+                            <select id="filterExpYear" class="filter-input" onchange="renderExpensesTable()"></select>
+                            <select id="filterExpMonth" class="filter-input" onchange="renderExpensesTable()"></select>
+                            <select id="filterExpDay" class="filter-input" onchange="renderExpensesTable()"></select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>الاسم</th><th>القسم</th><th>الملاحظات</th><th>المبلغ</th><th>التاريخ والوقت</th></tr>
+                            </thead>
+                            <tbody id="adminExpensesTableBody"></tbody>
+                        </table>
+                    </div>
+                    <button id="btnViewAllExp" class="btn-text" style="width: 100%; margin-top: 10px;" onclick="renderExpensesTable(true)">عرض السجل الكامل</button>
+                </div>
+            </div>
+
+            <!-- الطلبات -->
+            <div id="admin-tab-requests" class="admin-tab" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-bottom: 15px; font-size: 1.1rem;">الطلبات المعلقة</h3>
+                    <div id="adminRequestsList"></div>
+                </div>
+                
+                <div class="card">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">سجل الطلبات</h3>
+                    
+                    <div class="filters-container">
+                        <div class="filter-row">
+                            <select id="filterReqName" class="filter-input" onchange="renderRequestsHistory()"></select>
+                            <select id="filterReqCat" class="filter-input" onchange="renderRequestsHistory()"></select>
+                            <select id="filterReqStatus" class="filter-input" onchange="renderRequestsHistory()">
+                                <option value="">كل الحالات</option><option value="approved">مقبول</option><option value="rejected">مرفوض</option>
+                            </select>
+                        </div>
+                        <div class="filter-row">
+                            <select id="filterReqYear" class="filter-input" onchange="renderRequestsHistory()"></select>
+                            <select id="filterReqMonth" class="filter-input" onchange="renderRequestsHistory()"></select>
+                            <select id="filterReqDay" class="filter-input" onchange="renderRequestsHistory()"></select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>الاسم</th><th>القسم</th><th>الملاحظات</th><th>المبلغ</th><th>الحالة</th></tr>
+                            </thead>
+                            <tbody id="adminHistoryTableBody"></tbody>
+                        </table>
+                    </div>
+                    <button id="btnViewAllReq" class="btn-text" style="width: 100%; margin-top: 10px;" onclick="renderRequestsHistory(true)">عرض السجل الكامل</button>
+                </div>
+            </div>
+
+            <!-- التخصيص -->
+            <div id="admin-tab-settings" class="admin-tab" style="display: none;">
+                <div id="settings-menu">
+                    <h2 style="margin-bottom: 20px;">التخصيص ⚙️</h2>
+                    
+                    <div class="settings-menu-item" onclick="showSubTab('settings-users')">
+                        <div class="settings-icon">👥</div>
+                        <div><h3>إدارة الأفراد</h3><p style="font-size:0.8rem; color:var(--text-muted);">بيانات وحسابات وصلاحيات الأفراد</p></div>
+                    </div>
+                    <div class="settings-menu-item" onclick="showSubTab('settings-categories')">
+                        <div class="settings-icon">📊</div>
+                        <div><h3>إدارة الأقسام</h3><p style="font-size:0.8rem; color:var(--text-muted);">إضافة وتعديل الأقسام والميزانيات</p></div>
+                    </div>
+                    <div class="settings-menu-item" onclick="openModal('modal-sec-auth')">
+                        <div class="settings-icon">🔒</div>
+                        <div><h3>إعدادات الأمان</h3><p style="font-size:0.8rem; color:var(--text-muted);">تغيير الباسوورد وسؤال الاسترجاع</p></div>
+                    </div>
+                    <div class="settings-menu-item" style="border: 1px solid var(--danger); background: #fff0f2; margin-top: 30px;" onclick="openModal('modal-end-month')">
+                        <div class="settings-icon">📅</div>
+                        <div><h3 style="color: var(--danger);">إنهاء الشهر</h3><p style="font-size:0.8rem; color:var(--text-muted);">إغلاق الشهر وبدء دورة مالية جديدة</p></div>
+                    </div>
+                </div>
+                
+                <div id="settings-users" style="display: none;">
+                    <button class="btn-text" style="margin-bottom: 15px;" onclick="showSubTab('settings-menu')">⬅ رجوع للتخصيص</button>
+                    <div class="card">
+                        <h3 style="margin-bottom: 15px; font-size: 1.1rem;">إدارة الأفراد</h3>
+                        <div id="adminActiveUsersList"></div>
+                    </div>
+                </div>
+
+                <div id="settings-categories" style="display: none;">
+                    <button class="btn-text" style="margin-bottom: 15px;" onclick="showSubTab('settings-menu')">⬅ رجوع للتخصيص</button>
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="font-size: 1.1rem;">إدارة الأقسام</h3>
+                            <button class="btn-text" style="font-size: 1.5rem; padding: 0;" onclick="openAddCategoryModal()">+</button>
+                        </div>
+                        <div class="category-grid" id="adminCategoriesGridEdit"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= تطبيق المستخدم ================= -->
+        <div id="screen-user-app" class="screen">
+            <header class="header-title">
+                <span id="userGreetingTitle">مرحباً</span>
+                <div class="header-actions">
+                    <button class="btn-text" style="color: var(--danger); padding:0;" onclick="confirmLogout()">خروج</button>
+                    <div class="bell-icon" onclick="openNotifications('user')">🔔 <span class="notif-badge" id="userNotifBadge">0</span></div>
+                </div>
+            </header>
+            <div class="card" id="userBudgetCard" style="display: none; text-align: center; cursor: pointer;" onclick="openMainQuickStatus()">
+                <h3 style="color: var(--text-muted); font-size: 0.9rem;">الميزانية المتبقية (انقر للتفاصيل)</h3>
+                <h2 id="userVisibleBudgetTxt" style="font-size: 2rem; color: var(--success); margin: 10px 0;">0</h2>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 15px;">سجل مصاريفي</h3>
+                <div id="userTransactionsList"></div>
+            </div>
+        </div>
+
+    </div> <!-- End App Container -->
+
+    <!-- ================= العناصر الثابتة المشتركة ================= -->
+    <div class="bottom-nav" id="adminNav" style="display: none;">
+        <button class="nav-item active" onclick="switchTab('admin', 'home')"><span class="nav-icon">🏠</span><span>الملخص</span></button>
+        <button class="nav-item" onclick="switchTab('admin', 'expenses')"><span class="nav-icon">💸</span><span>المصروفات</span></button>
+        <button class="nav-item" onclick="switchTab('admin', 'requests')"><span class="nav-icon">📝</span><span>الطلبات</span></button>
+        <button class="nav-item" onclick="switchTab('admin', 'settings')"><span class="nav-icon">⚙️</span><span>التخصيص</span></button>
+    </div>
+
+    <!-- الأزرار العائمة ثابتة في الزاوية اليمنى السفلى بدون سحب -->
+    <button class="fab" id="adminDraggableFab" style="display: none; background: var(--text-main);" onclick="openExpenseModal('admin')">+</button>
+    <button class="fab" id="userDraggableFab" style="display: none;" onclick="openExpenseModal('user')">+</button>
+
+    <!-- ================= النوافذ المنبثقة ================= -->
+    
+    <div class="modal-overlay" id="modal-main-quick-status">
+        <div class="modal-content" style="max-width: 320px; text-align: center; position: relative;">
+            <div class="modal-header" style="border: none; padding-bottom: 0; justify-content: flex-end;">
+                <button class="btn-text" style="position: absolute; top: 15px; left: 15px;" onclick="closeModal('modal-main-quick-status')">✕</button>
+            </div>
+            <div style="font-size: 4rem; margin-bottom: 10px;">🏠</div>
+            <h3 style="margin-bottom: 5px; font-size: 1.2rem;">الميزانية العامة</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">حالة الاستهلاك الكلي للشهر الحالي</p>
+            <div style="background: #fff0f2; border: 1px solid var(--danger); padding: 15px; border-radius: var(--radius-md);">
+                <span style="display: block; font-size: 0.85rem; color: var(--danger); margin-bottom: 5px;">إجمالي المنصرف</span>
+                <strong id="quickMainSpent" style="font-size: 1.8rem; color: var(--danger);">0</strong> <span style="font-size: 0.9rem; color: var(--danger);">د.ا</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-cat-quick-status">
+        <div class="modal-content" style="max-width: 320px; text-align: center; position: relative;">
+            <div class="modal-header" style="border: none; padding-bottom: 0; justify-content: flex-end;">
+                <button class="btn-text" style="position: absolute; top: 15px; left: 15px;" onclick="closeModal('modal-cat-quick-status')">✕</button>
+            </div>
+            <div id="quickStatusIcon" style="font-size: 4rem; margin-bottom: 10px;">📊</div>
+            <h3 id="quickStatusTitle" style="margin-bottom: 5px; font-size: 1.2rem;">اسم القسم</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">حالة الاستهلاك الحالية</p>
+            <div style="background: #fff0f2; border: 1px solid var(--danger); padding: 15px; border-radius: var(--radius-md);">
+                <span style="display: block; font-size: 0.85rem; color: var(--danger); margin-bottom: 5px;">تم صرف</span>
+                <strong id="quickStatusSpent" style="font-size: 1.8rem; color: var(--danger);">0</strong> <span style="font-size: 0.9rem; color: var(--danger);">د.ا</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- نوافذ الأمان -->
+    <div class="modal-overlay" id="modal-sec-auth">
+        <div class="modal-content">
+            <div class="modal-header"><h3>تحقق من الأمان</h3><button class="btn-text" onclick="closeModal('modal-sec-auth')">✕</button></div>
+            <div class="form-group"><label class="form-label">كلمة المرور الحالية</label><input type="password" id="secAuthPass" class="form-control"></div>
+            <button class="btn btn-primary" onclick="verifySecAuth()">متابعة</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-sec-hub">
+        <div class="modal-content">
+            <div class="modal-header"><h3>إعدادات الأمان</h3><button class="btn-text" onclick="closeModal('modal-sec-hub')">✕</button></div>
+            <div class="settings-menu-item" onclick="closeModal('modal-sec-hub'); openModal('modal-sec-pass');">
+                <div class="settings-icon">🔑</div><div><h3>تغيير كلمة المرور</h3></div>
+            </div>
+            <div class="settings-menu-item" onclick="closeModal('modal-sec-hub'); openModal('modal-sec-qna');">
+                <div class="settings-icon">❓</div><div><h3>تعديل سؤال الأمان</h3></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-sec-pass">
+        <div class="modal-content">
+            <div class="modal-header"><h3>تغيير كلمة المرور</h3><button class="btn-text" onclick="closeModal('modal-sec-pass')">✕</button></div>
+            <div class="form-group"><label class="form-label">كلمة المرور الجديدة</label><input type="password" id="secNewP" class="form-control"></div>
+            <div class="form-group"><label class="form-label">تأكيد كلمة المرور</label><input type="password" id="secConfP" class="form-control"></div>
+            <button class="btn btn-primary" onclick="saveNewPass()">حفظ التغيير</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-sec-qna">
+        <div class="modal-content">
+            <div class="modal-header"><h3>سؤال الأمان (للاسترجاع)</h3><button class="btn-text" onclick="closeModal('modal-sec-qna')">✕</button></div>
+            <div class="form-group"><label class="form-label">السؤال السري</label><input type="text" id="secNewQ" class="form-control"></div>
+            <div class="form-group"><label class="form-label">الإجابة</label><input type="text" id="secNewA" class="form-control"></div>
+            <button class="btn btn-primary" onclick="saveNewQnA()">حفظ التغيير</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-recover-pass">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>استرجاع كلمة المرور</h3>
+                <button class="btn-text" onclick="closeModal('modal-recover-pass')">✕</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label" id="recoveryQuestionText" style="color: var(--primary); font-size: 1.1rem; margin-bottom: 15px;"></label>
+                <input type="text" id="recoveryAnswerInput" class="form-control" placeholder="أدخل الإجابة هنا...">
+            </div>
+            <button class="btn btn-primary" onclick="recoverAdminPassword()">تحقق وإظهار كلمة المرور</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-end-month">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="color: var(--danger);">إنهاء الشهر الحالي</h3>
+                <button class="btn-text" onclick="closeModal('modal-end-month')">✕</button>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.5;">سيتم الاحتفاظ بالبيانات في السجل وتصفير العدادات. الأقسام ستبقى ولكن بميزانية صفر لتعيد تخصيصها.</p>
+            <div class="form-group"><label class="form-label">الميزانية العامة الجديدة (د.ا)</label><input type="number" id="newMonthBudget" class="form-control"></div>
+            <button class="btn btn-danger" onclick="confirmEndMonth()">تأكيد وبدء دورة جديدة</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-all-categories-view">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>جميع الأقسام والميزانيات</h3>
+                <button class="btn-text" onclick="closeModal('modal-all-categories-view')">✕</button>
+            </div>
+            <div class="category-grid" id="modalAllCategoriesGrid"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-edit-user">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>تعديل بيانات الفرد</h3>
+                <button class="btn-text" onclick="closeModal('modal-edit-user')">✕</button>
+            </div>
+            <input type="hidden" id="editUserId">
+            <div class="form-group"><label class="form-label">الاسم</label><input type="text" id="editUserName" class="form-control"></div>
+            <div class="form-group"><label class="form-label">الإيميل</label><input type="email" id="editUserEmail" class="form-control"></div>
+            <div class="form-group"><label class="form-label">رقم الهاتف</label><input type="tel" id="editUserPhone" class="form-control"></div>
+            <div class="form-group"><label class="form-label">كليك (CliQ)</label><input type="text" id="editUserCliq" class="form-control"></div>
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
+            <div class="form-group" style="text-align: right;">
+                <label class="checkbox-label" style="justify-content: flex-start;">
+                    <input type="checkbox" id="editUserCanViewBudget"> السماح برؤية الميزانية العامة
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="form-label">الأقسام المسموح للفرد رؤيتها واستخدامها</label>
+                <div id="editUserCategoriesContainer" style="display: flex; flex-direction: column; text-align: right; gap: 5px;"></div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-primary" style="flex: 2;" onclick="saveUserDetails()">حفظ</button>
+                <button class="btn btn-danger" style="flex: 1;" onclick="deleteUser()">حذف الفرد</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-edit-category">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="editCatModalTitle">تعديل القسم</h3>
+                <button class="btn-text" onclick="closeModal('modal-edit-category')">✕</button>
+            </div>
+            <input type="hidden" id="editCatId">
+            <div class="form-group"><label class="form-label">اسم القسم</label><input type="text" id="editCatName" class="form-control"></div>
+            <div class="form-group">
+                <label class="form-label">الميزانية</label>
+                <input type="number" id="editCatBudget" class="form-control">
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px;">المتوفر للتوزيع: <span id="editCatMaxAllowed" style="color:var(--success); font-weight:bold;">0</span> د.ا</p>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-primary" style="flex: 2;" onclick="saveCategory()">حفظ التعديلات</button>
+                <button class="btn btn-danger" id="deleteCatBtn" style="flex: 1;" onclick="deleteCategory()">حذف</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-add-expense">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="addExpenseModalTitle">تسجيل مصروف</h3>
+                <button class="btn-text" onclick="closeModal('modal-add-expense')">✕</button>
+            </div>
+            <div class="form-group"><input type="number" id="expAmount" class="form-control" placeholder="المبلغ"></div>
+            <div class="form-group"><select id="expCategory" class="form-control"></select></div>
+            <div class="form-group"><select id="expMethod" class="form-control"><option value="كاش">كاش (نقدي)</option><option value="فيزا">بطاقة بنكية (فيزا)</option></select></div>
+            <div class="form-group"><input type="text" id="expNote" class="form-control" placeholder="ملاحظات الطلب"></div>
+            <button class="btn btn-primary" onclick="submitExpense()">إرسال الطلب</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-notifications">
+        <div class="modal-content">
+            <div class="modal-header" style="align-items: flex-start;">
+                <div>
+                    <h3 style="margin-bottom: 5px;">الإشعارات 🔔</h3>
+                    <button class="btn-text" style="font-size:0.75rem; padding:0;" onclick="markAllNotifsRead()">تحديد الكل كمقروء ✓</button>
+                </div>
+                <button class="btn-text" onclick="closeModal('modal-notifications')">✕</button>
+            </div>
+            <div id="notificationsList" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        /** ================= 1. تهيئة Supabase وقاعدة البيانات ================= */
+        // استبدل هذين السطرين بمفاتيح مشروعك من Supabase (Settings -> API)
+        const SUPABASE_URL = 'https://yjcmuypwxtieyhcvsvkj.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_VODZk7_CrTNSejV7KQY_Vg_Nf7piV9M';
+        
+        const supabaseClient = (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && window.supabase) 
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+            : null;
+
+        const DB = {
+            currentCycle: 1, totalBudget: 1500, currentRole: null, currentUser: null, 
+            adminConfig: { pass: "123", recoveryQ: "ما هي مدينتك المفضلة؟", recoveryA: "عمان" },
+            users: [
+                { id: 1, name: "عبدالعزيز محمد أحمد", email: "abd@fam.com", pass: "1234", phone: "0791234567", cliq: "ABD99", status: "approved", canViewBudget: true, allowedCategories: [101, 102] },
+                { id: 2, name: "عمر محمد أحمد", email: "omar@fam.com", pass: "1234", phone: "0780000000", cliq: "OMAR_C", status: "approved", canViewBudget: false, allowedCategories: [102] }
+            ],
+            categories: [
+                { id: 101, name: "فواتير التزامات", allocated: 500 }, { id: 102, name: "طعام ومقاضي", allocated: 600 }, { id: 103, name: "مدخرات (خاص)", allocated: 200 }
+            ],
+            transactions: [
+                { id: 1001, userId: 1, catId: 101, amount: 50, method: "فيزا", note: "فاتورة كهرباء", status: "approved", datetime: "2026-10-25 09:30 AM", dateRaw: "2026-10-25", cycle: 1 },
+                { id: 1002, userId: 'admin', catId: 103, amount: 100, method: "كاش", note: "توفير", status: "approved", datetime: "2026-10-26 10:00 AM", dateRaw: "2026-10-26", cycle: 1 },
+                { id: 1003, userId: 2, catId: 102, amount: 20, method: "كاش", note: "غداء", status: "rejected", datetime: "2026-10-27 01:15 PM", dateRaw: "2026-10-27", cycle: 1 }
+            ],
+            notifications: []
+        };
+
+        // دالة جلب البيانات الأولية من Supabase فور فتح التطبيق
+        async function loadFromSupabase() {
+            if (!supabaseClient) return;
+            try {
+                const [cfgRes, usrRes, catRes, txRes, notifRes] = await Promise.all([
+                    supabaseClient.from('config').select('*').eq('id', 1).single(),
+                    supabaseClient.from('users').select('*'),
+                    supabaseClient.from('categories').select('*'),
+                    supabaseClient.from('transactions').select('*'),
+                    supabaseClient.from('notifications').select('*').order('id', { ascending: false })
+                ]);
+
+                if (cfgRes.data) {
+                    DB.currentCycle = Number(cfgRes.data.currentCycle);
+                    DB.totalBudget = Number(cfgRes.data.totalBudget);
+                    DB.adminConfig.pass = cfgRes.data.pass;
+                    DB.adminConfig.recoveryQ = cfgRes.data.recoveryQ;
+                    DB.adminConfig.recoveryA = cfgRes.data.recoveryA;
+                }
+                if (usrRes.data) DB.users = usrRes.data.map(u => ({ ...u, id: Number(u.id) }));
+                if (catRes.data) DB.categories = catRes.data.map(c => ({ ...c, id: Number(c.id), allocated: Number(c.allocated) }));
+                if (txRes.data) DB.transactions = txRes.data.map(t => ({
+                    ...t,
+                    id: Number(t.id),
+                    userId: t.userId === 'admin' ? 'admin' : Number(t.userId),
+                    catId: Number(t.catId),
+                    amount: Number(t.amount),
+                    cycle: Number(t.cycle)
+                }));
+                if (notifRes.data) DB.notifications = notifRes.data.map(n => ({
+                    ...n,
+                    id: Number(n.id),
+                    target: n.target === 'admin' ? 'admin' : Number(n.target),
+                    reqId: n.reqId ? Number(n.reqId) : null
+                }));
+
+                const badge = document.getElementById('dbStatusBadge');
+                if (badge) { badge.innerText = 'متصل بقاعدة البيانات السحابية (Supabase) 🟢'; badge.style.color = 'var(--success)'; }
+                if (DB.currentRole === 'admin') renderAdmin();
+                if (DB.currentRole === 'user') renderUser();
+            } catch (err) {
+                console.error('خطأ في الاتصال بـ Supabase:', err);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadFromSupabase);
+
+        function getCurrentDateTime() {
+            const now = new Date(); let hours = now.getHours(); let ampm = hours >= 12 ? 'PM' : 'AM'; hours = hours % 12; hours = hours ? hours : 12;
+            return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(hours).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} ${ampm}`;
+        }
+        function getTodayRaw() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
+        function getCategorySpent(catId) { return DB.transactions.filter(t => t.catId === catId && t.status === 'approved' && t.cycle === DB.currentCycle).reduce((s, t) => s + parseFloat(t.amount), 0); }
+        function getTotalSpent() { return DB.categories.reduce((s, c) => s + getCategorySpent(c.id), 0); }
+        function getUserName(id) { if(id === 'admin') return "الإدارة"; const u = DB.users.find(u => u.id == id); return u ? u.name : "مجهول"; }
+        function getCatName(id) { if(id === 0) return "غير محدد"; const c = DB.categories.find(c => c.id == id); return c ? c.name : "-"; }
+        
+        function getCatIcon(name) {
+            if(name.includes('فواتير') || name.includes('كهرباء') || name.includes('ماء') || name.includes('التزامات')) return '💡';
+            if(name.includes('طعام') || name.includes('مقاضي') || name.includes('سوبر') || name.includes('أكل')) return '🛒';
+            if(name.includes('توفير') || name.includes('مدخرات')) return '💰';
+            if(name.includes('سيارة') || name.includes('بنزين') || name.includes('مواصلات')) return '⛽';
+            if(name.includes('صيانة') || name.includes('تصليح')) return '🛠️';
+            return '📁';
+        }
+
+        function showToast(msg, type='success') {
+            const container = document.getElementById('toast-container'); const toast = document.createElement('div');
+            toast.style.cssText = `padding: 14px; border-radius: 10px; color: white; font-weight: bold; background: ${type==='success'?'var(--success)':'var(--danger)'}; margin-bottom: 10px; animation: slideUp 0.3s ease;`;
+            toast.innerText = msg; container.appendChild(toast); setTimeout(() => toast.remove(), 3000);
+        }
+        function copyToClipboard(text) { navigator.clipboard.writeText(text).then(() => showToast('تم النسخ')).catch(() => showToast('فشل النسخ', 'error')); }
+
+        /** ================= 2. الإعدادات والأمان ================= */
+        function openModal(id) { 
+            document.getElementById(id).classList.add('active'); 
+            if(id === 'modal-recover-pass') document.getElementById('recoveryQuestionText').innerText = `سؤال الأمان: ${DB.adminConfig.recoveryQ}`;
+            if(id === 'modal-sec-auth') document.getElementById('secAuthPass').value = '';
+            if(id === 'modal-sec-pass') { document.getElementById('secNewP').value = ''; document.getElementById('secConfP').value = ''; }
+            if(id === 'modal-sec-qna') { document.getElementById('secNewQ').value = DB.adminConfig.recoveryQ; document.getElementById('secNewA').value = DB.adminConfig.recoveryA; }
+        }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        function verifySecAuth() {
+            if(document.getElementById('secAuthPass').value === DB.adminConfig.pass) { closeModal('modal-sec-auth'); openModal('modal-sec-hub'); } else showToast('كلمة المرور خاطئة', 'error');
+        }
+        async function saveNewPass() {
+            const np = document.getElementById('secNewP').value; const cp = document.getElementById('secConfP').value;
+            if(!np) { showToast('أدخل كلمة المرور الجديدة', 'error'); return; }
+            if(np !== cp) { showToast('كلمة المرور غير متطابقة', 'error'); return; }
+            DB.adminConfig.pass = np; 
+            if(supabaseClient) { try { await supabaseClient.from('config').update({pass: np}).eq('id', 1); } catch(e){ console.error(e); } }
+            showToast('تم تغيير كلمة المرور بنجاح'); closeModal('modal-sec-pass');
+        }
+        async function saveNewQnA() {
+            const nq = document.getElementById('secNewQ').value.trim(); const na = document.getElementById('secNewA').value.trim();
+            if(!nq || !na) { showToast('يجب تعبئة السؤال والإجابة', 'error'); return; }
+            DB.adminConfig.recoveryQ = nq; DB.adminConfig.recoveryA = na; 
+            if(supabaseClient) { try { await supabaseClient.from('config').update({recoveryQ: nq, recoveryA: na}).eq('id', 1); } catch(e){ console.error(e); } }
+            showToast('تم حفظ سؤال الأمان'); closeModal('modal-sec-qna');
+        }
+        function handleAdminLogin() { 
+            if(document.getElementById('adminPass').value === DB.adminConfig.pass) { DB.currentRole = 'admin'; navTo('screen-admin-app'); renderAdmin(); updateBellBadge(); document.getElementById('adminPass').value = ''; } 
+            else showToast('خطأ بالباسوورد', 'error'); 
+        }
+        function recoverAdminPassword() {
+            if(document.getElementById('recoveryAnswerInput').value.trim() === DB.adminConfig.recoveryA) { showToast(`كلمة المرور هي: ${DB.adminConfig.pass}`, 'success'); closeModal('modal-recover-pass'); document.getElementById('recoveryAnswerInput').value = ''; } else showToast('الإجابة غير صحيحة', 'error');
+        }
+
+        /** ================= 3. الإشعارات والتوجيه ================= */
+        async function sendNotif(target, text, tabDest = 'home', reqId = null) {
+            const newNotif = { id: Date.now(), target: String(target), text, read: false, datetime: getCurrentDateTime(), tab: tabDest, reqId };
+            DB.notifications.unshift(newNotif); updateBellBadge();
+            if(supabaseClient) { try { await supabaseClient.from('notifications').insert([newNotif]); } catch(e){ console.error(e); } }
+        }
+        function updateBellBadge() {
+            const target = DB.currentRole === 'admin' ? 'admin' : DB.currentUser; const unread = DB.notifications.filter(n => n.target == target && !n.read).length;
+            const badge = document.getElementById(DB.currentRole === 'admin' ? 'adminNotifBadge' : 'userNotifBadge');
+            if(badge) { badge.innerText = unread > 99 ? '99+' : unread; badge.style.display = unread > 0 ? 'block' : 'none'; }
+        }
+        function openNotifications(role) {
+            const target = role === 'admin' ? 'admin' : DB.currentUser; const myNotifs = DB.notifications.filter(n => n.target == target);
+            const list = document.getElementById('notificationsList'); list.innerHTML = '';
+            if(myNotifs.length === 0) list.innerHTML = '<p style="text-align:center; color:var(--text-muted);">لا توجد إشعارات</p>';
+            else myNotifs.forEach(n => { list.innerHTML += `<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead(${n.id})"><h4>${n.text}</h4><span>🕒 ${n.datetime}</span></div>`; });
+            openModal('modal-notifications');
+        }
+        async function markNotifRead(id) {
+            const n = DB.notifications.find(n => n.id === id);
+            if(n) { 
+                n.read = true; updateBellBadge(); closeModal('modal-notifications'); if(n.tab && DB.currentRole) switchTab(DB.currentRole, n.tab); 
+                if(supabaseClient) { try { await supabaseClient.from('notifications').update({read: true}).eq('id', id); } catch(e){ console.error(e); } }
+            }
+        }
+        async function markAllNotifsRead() {
+            const target = DB.currentRole === 'admin' ? 'admin' : DB.currentUser; 
+            DB.notifications.forEach(n => { if(n.target == target) n.read = true; });
+            if(supabaseClient) { try { await supabaseClient.from('notifications').update({read: true}).eq('target', String(target)); } catch(e){ console.error(e); } }
+            updateBellBadge(); openNotifications(DB.currentRole); showToast('تم التحديد كمقروء');
+        }
+        function navTo(id) { 
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); 
+            document.getElementById('adminNav').style.display = (id === 'screen-admin-app') ? 'flex' : 'none';
+            document.getElementById('adminDraggableFab').style.display = (id === 'screen-admin-app') ? 'flex' : 'none';
+            document.getElementById('userDraggableFab').style.display = (id === 'screen-user-app') ? 'flex' : 'none';
+        }
+        function switchTab(role, tab) {
+            document.querySelectorAll(`[id^="${role}-tab-"]`).forEach(t => t.style.display = 'none'); document.querySelectorAll(`#${role}Nav .nav-item`).forEach(b => b.classList.remove('active')); document.getElementById(`${role}-tab-${tab}`).style.display = 'block';
+            if(event && event.currentTarget && event.currentTarget.classList.contains('nav-item')) event.currentTarget.classList.add('active');
+            if(role === 'admin') { showSubTab('settings-menu'); renderAdmin(); }
+        }
+        function showSubTab(subId) { ['settings-menu','settings-users','settings-categories'].forEach(id => document.getElementById(id).style.display = 'none'); document.getElementById(subId).style.display = 'block'; }
+        function confirmLogout() { if(confirm('خروج؟')) { DB.currentUser = null; DB.currentRole = null; navTo('screen-splash'); } }
+        function toggleUserForms() { const l = document.getElementById('form-user-login'); const r = document.getElementById('form-user-register'); l.style.display = l.style.display === 'none' ? 'block' : 'none'; r.style.display = r.style.display === 'none' ? 'block' : 'none'; }
+        
+        function handleUserLogin() { 
+            const u = DB.users.find(u => u.email === document.getElementById('userLoginEmail').value && u.pass === document.getElementById('userLoginPass').value);
+            if(u) { if(u.status === 'pending') { showToast('حسابك قيد المراجعة', 'error'); return; } DB.currentUser = u.id; DB.currentRole = 'user'; navTo('screen-user-app'); renderUser(); updateBellBadge(); } 
+            else showToast('بيانات خاطئة', 'error');
+        }
+        
+        async function handleUserRegister() {
+            const name = document.getElementById('regName').value.trim();
+            if(name.split(/\s+/).length < 3) { showToast('يرجى كتابة الاسم ثلاثياً', 'error'); return; }
+            const newUser = { id: Date.now(), name, email: document.getElementById('regEmail').value, pass: document.getElementById('regPass').value, phone: document.getElementById('regPhone').value, cliq: document.getElementById('regCliq').value, status: 'pending', canViewBudget: false, allowedCategories: [] };
+            DB.users.push(newUser);
+            if(supabaseClient) { try { await supabaseClient.from('users').insert([newUser]); } catch(e){ console.error(e); } }
+            sendNotif('admin', `طلب انضمام جديد من: ${name}`, 'settings');
+            showToast('تم إرسال الطلب للإدارة', 'success'); toggleUserForms();
+        }
+
+        /** ================= 4. الفلاتر ================= */
+        function populateFilters() {
+            const nameSelects = [document.getElementById('filterExpName'), document.getElementById('filterReqName')];
+            nameSelects.forEach(select => { if(select) { select.innerHTML = '<option value="">كل الأفراد</option><option value="admin">الإدارة</option>'; DB.users.forEach(u => select.innerHTML += `<option value="${u.id}">${u.name}</option>`); } });
+            const catSelects = [document.getElementById('filterExpCat'), document.getElementById('filterReqCat')];
+            catSelects.forEach(select => { if(select) { select.innerHTML = '<option value="">كل الأقسام</option><option value="0">غير محدد</option>'; DB.categories.forEach(c => select.innerHTML += `<option value="${c.id}">${c.name}</option>`); } });
+
+            const yearOpts = '<option value="">السنوات</option><option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>';
+            let monthOpts = '<option value="">الأشهر</option>'; for(let i=1; i<=12; i++) monthOpts += `<option value="${String(i).padStart(2,'0')}">${i}</option>`;
+            let dayOpts = '<option value="">الأيام</option>'; for(let i=1; i<=31; i++) dayOpts += `<option value="${String(i).padStart(2,'0')}">${i}</option>`;
+            ['Exp', 'Req'].forEach(prefix => {
+                const y = document.getElementById(`filter${prefix}Year`); if(y) y.innerHTML = yearOpts; const m = document.getElementById(`filter${prefix}Month`); if(m) m.innerHTML = monthOpts; const d = document.getElementById(`filter${prefix}Day`); if(d) d.innerHTML = dayOpts;
+            });
+        }
+
+        function openMainQuickStatus() {
+            const spent = getTotalSpent(); document.getElementById('quickMainSpent').innerText = spent; openModal('modal-main-quick-status');
+        }
+
+        function openCatQuickStatus(catId) {
+            const cat = DB.categories.find(c => c.id === catId);
+            if(cat) {
+                const spent = getCategorySpent(catId);
+                document.getElementById('quickStatusIcon').innerText = getCatIcon(cat.name); document.getElementById('quickStatusTitle').innerText = cat.name; document.getElementById('quickStatusSpent').innerText = spent; openModal('modal-cat-quick-status');
+            }
+        }
+
+        /** ================= 5. محرك الإدارة ================= */
+        function renderAdmin() {
+            populateFilters(); 
+            const spent = getTotalSpent(); document.getElementById('adminTotalTxt').innerText = DB.totalBudget; document.getElementById('adminRemainingTxt').innerText = DB.totalBudget - spent;
+            const perc = DB.totalBudget > 0 ? ((DB.totalBudget - spent) / DB.totalBudget) * 100 : 0;
+            document.getElementById('adminMainCircle').style.background = `conic-gradient(var(--success) ${perc}%, var(--border) 0deg)`;
+
+            const catGrid = document.getElementById('adminCategoriesGridViewOnly');
+            if(catGrid) {
+                catGrid.innerHTML = '';
+                DB.categories.slice(0, 3).forEach(cat => {
+                    const s = getCategorySpent(cat.id); const p = cat.allocated > 0 ? ((cat.allocated - s) / cat.allocated) * 100 : 0;
+                    catGrid.innerHTML += `<div class="cat-card" onclick="openCatQuickStatus(${cat.id})"><div class="progress-circle" style="width: 80px; height: 80px; margin: 0 auto 5px; background: conic-gradient(var(--success) ${p}%, var(--secondary) 0deg);"><div class="progress-inner" style="inset: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.1;"><strong style="font-size: 0.9rem; color: var(--text-main);">${cat.allocated - s}</strong><span style="font-size: 0.65rem; color: var(--text-muted);">من ${cat.allocated}</span></div></div><h4 style="font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${cat.name}</h4></div>`;
+                });
+            }
+            const modalAllCatGrid = document.getElementById('modalAllCategoriesGrid');
+            if(modalAllCatGrid) {
+                modalAllCatGrid.innerHTML = '';
+                DB.categories.forEach(cat => {
+                    const s = getCategorySpent(cat.id); const p = cat.allocated > 0 ? ((cat.allocated - s) / cat.allocated) * 100 : 0;
+                    modalAllCatGrid.innerHTML += `<div class="cat-card" onclick="openCatQuickStatus(${cat.id})"><div class="progress-circle" style="width: 80px; height: 80px; margin: 0 auto 5px; background: conic-gradient(var(--success) ${p}%, var(--secondary) 0deg);"><div class="progress-inner" style="inset: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.1;"><strong style="font-size: 0.9rem; color: var(--text-main);">${cat.allocated - s}</strong><span style="font-size: 0.65rem; color: var(--text-muted);">من ${cat.allocated}</span></div></div><h4 style="font-size: 0.85rem;">${cat.name}</h4></div>`;
+                });
+            }
+
+            const recentList = document.getElementById('adminRecentTxsList');
+            if(recentList) {
+                recentList.innerHTML = '';
+                const approvedTxs = DB.transactions.filter(t => t.status === 'approved' && t.cycle === DB.currentCycle).slice(-3).reverse();
+                if(approvedTxs.length === 0) recentList.innerHTML = '<p style="font-size:0.8rem; text-align:center; color:var(--text-muted);">لا يوجد</p>';
+                approvedTxs.forEach(t => recentList.innerHTML += `<div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom:1px solid var(--border);"><div><h4 style="font-size:0.9rem;">${getUserName(t.userId)}</h4><span style="font-size:0.75rem; color:var(--text-muted);">${getCatName(t.catId)}</span></div><strong style="color:var(--danger); font-size:0.9rem;">- ${t.amount}</strong></div>`);
+            }
+
+            renderExpensesTable();
+            const reqList = document.getElementById('adminRequestsList');
+            if(reqList) {
+                reqList.innerHTML = '';
+                const pendingReqs = DB.transactions.filter(t => t.status === 'pending');
+                if(pendingReqs.length === 0) reqList.innerHTML = '<p style="text-align:center; color:var(--text-muted);">لا يوجد</p>';
+                pendingReqs.forEach(req => {
+                    let catOpts = `<option value="0" ${req.catId === 0 ? 'selected' : ''}>غير محدد</option>`;
+                    catOpts += DB.categories.map(c => `<option value="${c.id}" ${c.id === req.catId ? 'selected' : ''}>${c.name}</option>`).join('');
+                    reqList.innerHTML += `<div class="list-item" style="flex-direction: column; align-items: stretch; gap: 10px;"><div class="item-info"><h4>${getUserName(req.userId)} طلب ${req.amount} د.ا</h4><div class="item-meta"><span>💳 ${req.method}</span><span>📝 ${req.note || '-'}</span></div></div><div style="display:flex; align-items: center; gap: 10px; background: var(--bg-main); padding: 5px; border-radius: 5px;"><span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">الخصم من:</span><select id="reqCat_${req.id}" class="form-control" style="padding: 5px; font-size: 0.85rem;">${catOpts}</select></div><div style="display:flex; gap:10px;"><button class="btn btn-primary" style="padding: 8px;" onclick="processReq(${req.id}, 'approved')">قبول وتأكيد</button><button class="btn btn-outline" style="padding: 8px;" onclick="processReq(${req.id}, 'rejected')">رفض</button></div></div>`;
+                });
+            }
+            renderRequestsHistory();
+
+            const uList = document.getElementById('adminActiveUsersList');
+            if(uList) {
+                uList.innerHTML = '';
+                DB.users.forEach(u => {
+                    if(u.status === 'pending') {
+                        uList.innerHTML += `<div class="user-manage-card" style="border-color: var(--warning); background: #fffdf5;"><div class="user-manage-header"><h4 style="margin:0;">🆕 ${u.name} (طلب جديد)</h4><button class="btn btn-primary" style="width:auto; padding: 5px 15px;" onclick="approveUser(${u.id})">قبول</button></div><div class="user-manage-details"><span>📧 ${u.email}</span><span>📱 ${u.phone || '-'}</span></div><div class="user-manage-cliq"><span>💳 كليك: <strong style="color:var(--primary);">${u.cliq || '-'}</strong></span></div></div>`;
+                    } else {
+                        uList.innerHTML += `<div class="user-manage-card"><div class="user-manage-header"><h4 style="margin:0;">👤 ${u.name}</h4><button class="btn btn-outline" style="width:auto; padding: 5px 15px;" onclick="openEditUserModal(${u.id})">تعديل ⚙️</button></div><div class="user-manage-details"><span>📧 ${u.email}</span><span>📱 ${u.phone || '-'}</span></div><div class="user-manage-cliq"><span>💳 كليك: <strong style="color:var(--primary);">${u.cliq || '-'}</strong></span>${u.cliq ? `<button class="btn-text" style="font-size:0.75rem; padding:0;" onclick="copyToClipboard('${u.cliq}')">نسخ 📋</button>` : ''}</div></div>`;
+                    }
+                });
+            }
+
+            const catGridEdit = document.getElementById('adminCategoriesGridEdit');
+            if(catGridEdit) {
+                catGridEdit.innerHTML = '';
+                DB.categories.forEach(cat => catGridEdit.innerHTML += `<div class="cat-card" onclick="openEditCategoryModal(${cat.id})"><button class="cat-settings-btn">⚙️</button><div class="progress-circle" style="width: 80px; height: 80px; margin: 0 auto 5px; background: conic-gradient(var(--success) 100%, var(--secondary) 0deg);"><div class="progress-inner" style="inset: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.1;"><strong style="font-size: 0.9rem; color: var(--text-main);">${cat.allocated}</strong></div></div><h4 style="font-size: 0.9rem; padding: 5px 0 0 0;">${cat.name}</h4></div>`);
+            }
+        }
+
+        async function confirmEndMonth() {
+            const newBudget = parseFloat(document.getElementById('newMonthBudget').value);
+            if(!newBudget || isNaN(newBudget) || newBudget <= 0) { showToast('أدخل ميزانية صحيحة', 'error'); return; }
+            if(confirm('تأكيد إنهاء الشهر؟')) {
+                DB.currentCycle++; DB.totalBudget = newBudget; DB.categories.forEach(c => { c.allocated = 0; });
+                if(supabaseClient) { 
+                    try { 
+                        await supabaseClient.from('config').update({currentCycle: DB.currentCycle, totalBudget: newBudget}).eq('id', 1);
+                        for (const c of DB.categories) {
+                            await supabaseClient.from('categories').update({allocated: 0}).eq('id', c.id);
+                        }
+                    } catch(e){ console.error(e); } 
+                }
+                showToast('تم بدء شهر جديد!', 'success'); closeModal('modal-end-month'); switchTab('admin', 'home');
+            }
+        }
+
+        // ================= 6. الجداول الذكية =================
+        function getFilteredTransactions(type = 'expenses') {
+            let txs = []; const prefix = type === 'expenses' ? 'Exp' : 'Req';
+            if(type === 'expenses') txs = DB.transactions.filter(t => t.status === 'approved').reverse();
+            else txs = DB.transactions.filter(t => t.status !== 'pending').reverse();
+
+            const fNameId = document.getElementById(`filter${prefix}Name`).value;
+            const fCatId = document.getElementById(`filter${prefix}Cat`).value;
+            const fYear = document.getElementById(`filter${prefix}Year`).value;
+            const fMonth = document.getElementById(`filter${prefix}Month`).value;
+            const fDay = document.getElementById(`filter${prefix}Day`).value;
+            
+            if(fNameId) { if(fNameId === 'admin') txs = txs.filter(t => t.userId === 'admin'); else txs = txs.filter(t => t.userId == fNameId); }
+            if(fCatId) txs = txs.filter(t => t.catId == fCatId);
+            if (fYear || fMonth || fDay) {
+                txs = txs.filter(t => {
+                    const [y, m, d] = t.dateRaw.split('-');
+                    if (fYear && y !== fYear) return false; if (fMonth && m !== fMonth) return false; if (fDay && d !== fDay) return false; return true;
+                });
+            }
+            if(type === 'requests') { const fStat = document.getElementById('filterReqStatus').value; if(fStat) txs = txs.filter(t => t.status === fStat); }
+            return txs;
+        }
+
+        function renderExpensesTable(showAll = false) {
+            const tbody = document.getElementById('adminExpensesTableBody'); if(!tbody) return; tbody.innerHTML = '';
+            let txs = getFilteredTransactions('expenses'); if(!showAll && txs.length > 10) txs = txs.slice(0, 10);
+            if(txs.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">لا توجد بيانات مطابقة</td></tr>'; return; }
+            txs.forEach(t => tbody.innerHTML += `<tr><td>${getUserName(t.userId)}</td><td>${getCatName(t.catId)}</td><td style="font-size:0.75rem;">${t.note || '-'}</td><td style="color:var(--danger); direction:ltr; font-weight:bold;">${t.amount}</td><td style="font-size:0.75rem;">${t.datetime}</td></tr>`);
+            const btn = document.getElementById('btnViewAllExp'); if(btn) btn.style.display = (showAll || txs.length <= 10) ? 'none' : 'block';
+        }
+
+        function renderRequestsHistory(showAll = false) {
+            const tbody = document.getElementById('adminHistoryTableBody'); if(!tbody) return; tbody.innerHTML = '';
+            let txs = getFilteredTransactions('requests'); if(!showAll && txs.length > 10) txs = txs.slice(0, 10);
+            if(txs.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">لا توجد بيانات مطابقة</td></tr>'; return; }
+            txs.forEach(t => {
+                let badgeClass = t.status === 'approved' ? 'badge-success' : 'badge-danger'; let statusTxt = t.status === 'approved' ? 'مقبول' : 'مرفوض';
+                tbody.innerHTML += `<tr><td>${getUserName(t.userId)}</td><td>${getCatName(t.catId)}</td><td style="font-size:0.75rem;">${t.note || '-'}</td><td style="color:var(--danger); direction:ltr;">${t.amount}</td><td><span class="badge ${badgeClass}">${statusTxt}</span></td></tr>`;
+            });
+            const btn = document.getElementById('btnViewAllReq'); if(btn) btn.style.display = (showAll || txs.length <= 10) ? 'none' : 'block';
+        }
+
+        async function processReq(reqId, action) {
+            const req = DB.transactions.find(t => t.id === reqId);
+            if(req) { 
+                if(action === 'approved') { 
+                    const catId = parseInt(document.getElementById(`reqCat_${reqId}`).value); 
+                    if(catId === 0) { showToast("الرجاء تحديد قسم صحيح قبل الموافقة", "error"); return; }
+                    req.catId = catId; req.cycle = DB.currentCycle; 
+                }
+                req.status = action; 
+                const relatedNotif = DB.notifications.find(n => n.reqId === reqId); if(relatedNotif) relatedNotif.read = true;
+                
+                if(supabaseClient) { 
+                    try { 
+                        await supabaseClient.from('transactions').update({status: req.status, catId: req.catId, cycle: req.cycle}).eq('id', reqId); 
+                        if(relatedNotif) await supabaseClient.from('notifications').update({read: true}).eq('id', relatedNotif.id);
+                    } catch(e){ console.error(e); } 
+                }
+                renderAdmin(); updateBellBadge(); showToast(action === 'approved' ? "تمت الموافقة" : "تم الرفض", "success");
+            }
+        }
+
+        // ================= 7. الأقسام والميزانية =================
+        function getUnallocatedBudget(excludeCatId = null) {
+            let allocated = 0; DB.categories.forEach(c => { if (c.id !== excludeCatId) allocated += c.allocated; }); return DB.totalBudget - allocated;
+        }
+
+        function openAddCategoryModal() {
+            document.getElementById('editCatId').value = ""; document.getElementById('editCatName').value = ""; document.getElementById('editCatBudget').value = "";
+            document.getElementById('deleteCatBtn').style.display = 'none'; document.getElementById('editCatMaxAllowed').innerText = getUnallocatedBudget(); openModal('modal-edit-category');
+        }
+        function openEditCategoryModal(catId) {
+            const cat = DB.categories.find(c => c.id === catId);
+            if(cat) {
+                document.getElementById('editCatId').value = cat.id; document.getElementById('editCatName').value = cat.name; document.getElementById('editCatBudget').value = cat.allocated;
+                document.getElementById('deleteCatBtn').style.display = 'block'; document.getElementById('editCatMaxAllowed').innerText = getUnallocatedBudget(catId); openModal('modal-edit-category');
+            }
+        }
+        async function saveCategory() {
+            const id = document.getElementById('editCatId').value; const name = document.getElementById('editCatName').value; const budget = parseFloat(document.getElementById('editCatBudget').value);
+            if(!name || isNaN(budget)) return;
+            const maxAllowed = getUnallocatedBudget(id ? parseInt(id) : null);
+            if (budget > maxAllowed) { showToast(`المتوفر للتوزيع هو ${maxAllowed} د.ا فقط`, 'error'); return; }
+            
+            if(id) { 
+                const cat = DB.categories.find(c => c.id == id); cat.name = name; cat.allocated = budget; 
+                if(supabaseClient) { try { await supabaseClient.from('categories').update({name, allocated: budget}).eq('id', id); } catch(e){ console.error(e); } }
+            } else { 
+                const newCat = { id: Date.now(), name, allocated: budget }; DB.categories.push(newCat); 
+                if(supabaseClient) { try { await supabaseClient.from('categories').insert([newCat]); } catch(e){ console.error(e); } }
+            }
+            closeModal('modal-edit-category'); renderAdmin();
+        }
+        async function deleteCategory() {
+            const id = document.getElementById('editCatId').value;
+            if(confirm("تأكيد حذف القسم؟")) { 
+                DB.categories = DB.categories.filter(c => c.id != id); 
+                if(supabaseClient) { try { await supabaseClient.from('categories').delete().eq('id', id); } catch(e){ console.error(e); } }
+                closeModal('modal-edit-category'); renderAdmin(); 
+            }
+        }
+
+        // ================= 8. الأفراد وتصاريح الرؤية =================
+        async function approveUser(userId) { 
+            const u = DB.users.find(u => u.id === userId); 
+            if(u) { 
+                u.status = 'approved'; u.allowedCategories = DB.categories.map(c=>c.id); 
+                if(supabaseClient) { try { await supabaseClient.from('users').update({status: 'approved', allowedCategories: u.allowedCategories}).eq('id', userId); } catch(e){ console.error(e); } }
+                showToast("تم القبول"); renderAdmin(); 
+            } 
+        }
+        function openEditUserModal(userId) {
+            const u = DB.users.find(u => u.id === userId);
+            if(u) {
+                document.getElementById('editUserId').value = u.id; document.getElementById('editUserName').value = u.name;
+                document.getElementById('editUserEmail').value = u.email; document.getElementById('editUserPhone').value = u.phone || '';
+                document.getElementById('editUserCliq').value = u.cliq || ''; document.getElementById('editUserCanViewBudget').checked = u.canViewBudget;
+                const catContainer = document.getElementById('editUserCategoriesContainer'); catContainer.innerHTML = '';
+                DB.categories.forEach(c => {
+                    const isChecked = u.allowedCategories && u.allowedCategories.includes(c.id) ? 'checked' : '';
+                    catContainer.innerHTML += `<label class="checkbox-label" style="justify-content: flex-start; padding: 5px 10px;"><input type="checkbox" class="user-cat-cb" value="${c.id}" ${isChecked}>${c.name}</label>`;
+                });
+                openModal('modal-edit-user');
+            }
+        }
+        async function saveUserDetails() {
+            const id = document.getElementById('editUserId').value; const u = DB.users.find(u => u.id == id);
+            if(u) {
+                u.name = document.getElementById('editUserName').value; u.email = document.getElementById('editUserEmail').value;
+                u.phone = document.getElementById('editUserPhone').value; u.cliq = document.getElementById('editUserCliq').value;
+                u.canViewBudget = document.getElementById('editUserCanViewBudget').checked; u.allowedCategories = Array.from(document.querySelectorAll('.user-cat-cb:checked')).map(cb => parseInt(cb.value));
+                if(supabaseClient) { try { await supabaseClient.from('users').update({name: u.name, email: u.email, phone: u.phone, cliq: u.cliq, canViewBudget: u.canViewBudget, allowedCategories: u.allowedCategories}).eq('id', id); } catch(e){ console.error(e); } }
+                showToast('تم الحفظ'); closeModal('modal-edit-user'); renderAdmin();
+            }
+        }
+        async function deleteUser() {
+            if(confirm("تأكيد الحذف نهائياً؟")) {
+                const id = document.getElementById('editUserId').value; DB.users = DB.users.filter(u => u.id != id);
+                if(supabaseClient) { try { await supabaseClient.from('users').delete().eq('id', id); } catch(e){ console.error(e); } }
+                showToast('تم الحذف'); closeModal('modal-edit-user'); renderAdmin();
+            }
+        }
+
+        // ================= 9. المستخدم والإضافة =================
+        function renderUser() {
+            const u = DB.users.find(u => u.id === DB.currentUser); document.getElementById('userGreetingTitle').innerText = `مرحباً، ${u.name.split(' ')[0]}`;
+            document.getElementById('userBudgetCard').style.display = u.canViewBudget ? 'block' : 'none'; document.getElementById('userVisibleBudgetTxt').innerText = `${DB.totalBudget - getTotalSpent()} د.ا`;
+            const list = document.getElementById('userTransactionsList'); list.innerHTML = '';
+            DB.transactions.filter(t => t.userId == u.id).reverse().forEach(t => {
+                let statusTxt = t.status === 'approved' ? 'معتمد' : t.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار'; let bClass = t.status === 'approved' ? 'badge-success' : t.status === 'rejected' ? 'badge-danger' : 'badge-pending';
+                list.innerHTML += `<div class="list-item"><div class="item-info"><h4>${getCatName(t.catId)}</h4><span class="item-meta">💳 ${t.method} • 🕒 ${t.datetime}</span></div><div style="text-align:left;"><strong style="display:block; margin-bottom:4px;">${t.amount} د.ا</strong><span class="badge ${bClass}">${statusTxt}</span></div></div>`;
+            });
+        }
+
+        function openExpenseModal(role) {
+            const sel = document.getElementById('expCategory'); sel.innerHTML = '';
+            if(role === 'admin') {
+                DB.categories.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+            } else {
+                const u = DB.users.find(u => u.id === DB.currentUser);
+                if (u.allowedCategories) DB.categories.filter(c => u.allowedCategories.includes(c.id)).forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+                sel.innerHTML += `<option value="0">أخرى / غير محدد</option>`;
+            }
+            openModal('modal-add-expense');
+        }
+
+        async function submitExpense() {
+            const amtStr = document.getElementById('expAmount').value; const catIdStr = document.getElementById('expCategory').value;
+            if(!amtStr || catIdStr === "") { showToast("أدخل المبلغ والقسم", "error"); return; }
+            const amt = parseFloat(amtStr); const catId = parseInt(catIdStr);
+            const isAdm = (DB.currentRole === 'admin'); const txId = Date.now();
+            
+            const newTx = { id: txId, userId: isAdm ? 'admin' : String(DB.currentUser), catId: catId, amount: amt, method: document.getElementById('expMethod').value, note: document.getElementById('expNote').value, status: isAdm ? "approved" : "pending", datetime: getCurrentDateTime(), dateRaw: getTodayRaw(), cycle: DB.currentCycle };
+            DB.transactions.push(newTx);
+            if(supabaseClient) { try { await supabaseClient.from('transactions').insert([newTx]); } catch(e){ console.error(e); } }
+
+            if(!isAdm) sendNotif('admin', `طلب دفع بقيمة ${amt} د.ا من ${getUserName(DB.currentUser)}`, 'requests', txId);
+            closeModal('modal-add-expense'); document.getElementById('expAmount').value = ''; document.getElementById('expNote').value = '';
+            if(isAdm) renderAdmin(); else renderUser(); showToast('تم التسجيل');
+        }
+
+        /** ================= 10. الطباعة ================= */
+        function printFilteredExpenses() {
+            const txs = getFilteredTransactions('expenses'); const printArea = document.getElementById('printArea');
+            let html = `<div class="print-header"><h2>تقرير المصروفات المعتمدة</h2><p>تاريخ الإصدار: ${getCurrentDateTime()}</p></div>`;
+            html += `<table class="print-table"><tr><th>الاسم</th><th>القسم</th><th>الملاحظات</th><th>المبلغ</th><th>التاريخ والوقت</th></tr>`;
+            let total = 0;
+            txs.forEach(t => { total += parseFloat(t.amount); html += `<tr><td>${getUserName(t.userId)}</td><td>${getCatName(t.catId)}</td><td>${t.note || '-'}</td><td style="font-weight:bold;">${t.amount}</td><td>${t.datetime}</td></tr>`; });
+            html += `</table><div style="margin-top: 20px; font-weight: bold; font-size: 1.2rem;">إجمالي المصروفات في هذا التقرير: ${total} د.ا</div>`;
+            printArea.innerHTML = html; window.print();
+        }
+    </script>
+</body>
+</html>
